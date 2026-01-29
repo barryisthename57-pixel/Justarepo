@@ -46,12 +46,11 @@ class RumbleBot:
         logger.info(f"🔧 CPU Cores: {cpu_count}")
         logger.info("=" * 60)
         
-        # Railway typically gives 8GB RAM, 8 vCPUs
-        # Recommend conservative tab count
-        max_safe_tabs = int((ram_available_gb - 1) / 0.15)  # 150MB per tab
+        # Conservative limit for Railway
+        max_safe_tabs = min(int((ram_available_gb - 1) / 0.2), 20)
         
         if self.num_tabs > max_safe_tabs:
-            logger.warning(f"⚠️  Requested {self.num_tabs} tabs, but {max_safe_tabs} recommended")
+            logger.warning(f"⚠️  Requested {self.num_tabs} tabs, limiting to {max_safe_tabs}")
             self.num_tabs = max_safe_tabs
         
         logger.info(f"📊 Using {self.num_tabs} tabs")
@@ -63,7 +62,7 @@ class RumbleBot:
             page = await browser.new_page()
             await page.set_viewport_size({"width": 1280, "height": 720})
             
-            logger.info(f"🌐 Tab {tab_index + 1}: Loading...")
+            logger.info(f"🌐 Tab {tab_index + 1}: Loading {url[:60]}...")
             await page.goto(url, wait_until='domcontentloaded', timeout=30000)
             
             await asyncio.sleep(2)
@@ -85,7 +84,7 @@ class RumbleBot:
             return page
             
         except Exception as e:
-            logger.error(f"❌ Tab {tab_index + 1}: {str(e)[:100]}")
+            logger.error(f"❌ Tab {tab_index + 1}: {str(e)[:150]}")
             self.stats['errors'] += 1
             return None
     
@@ -94,6 +93,7 @@ class RumbleBot:
         try:
             url = random.choice(self.video_urls)
             
+            logger.info(f"🔄 Tab {tab_index + 1}: Reloading...")
             await page.goto(url, wait_until='domcontentloaded', timeout=30000)
             await asyncio.sleep(2)
             
@@ -113,7 +113,7 @@ class RumbleBot:
             logger.info(f"✅ Tab {tab_index + 1}: Reloaded")
             
         except Exception as e:
-            logger.error(f"❌ Tab {tab_index + 1} reload: {str(e)[:100]}")
+            logger.error(f"❌ Tab {tab_index + 1} reload: {str(e)[:150]}")
             self.stats['errors'] += 1
     
     def print_stats(self):
@@ -141,6 +141,10 @@ class RumbleBot:
             
             logger.info(f"\n🔄 RELOAD CYCLE - {len(self.pages)} tabs")
             
+            if len(self.pages) == 0:
+                logger.warning("⚠️  No active tabs to reload!")
+                continue
+            
             tasks = [
                 self.reload_tab(page, i)
                 for i, page in enumerate(self.pages)
@@ -158,8 +162,10 @@ class RumbleBot:
         logger.info(f"📺 Tabs: {self.num_tabs}")
         logger.info(f"🔄 Reload: Every {self.reload_interval}s ({self.reload_interval/60:.1f} min)")
         logger.info(f"📹 Videos: {len(self.video_urls)}")
+        logger.info(f"🎯 Target: {self.video_urls[0][:80]}")
         
         async with async_playwright() as p:
+            # FIXED: Better browser args for Railway/Docker
             self.browser = await p.chromium.launch(
                 headless=True,
                 args=[
@@ -171,18 +177,34 @@ class RumbleBot:
                     '--disable-extensions',
                     '--mute-audio',
                     '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',  # Important for Railway
-                    '--disable-web-security'
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-breakpad',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-renderer-backgrounding',
+                    '--force-color-profile=srgb',
+                    '--metrics-recording-only',
+                    '--no-default-browser-check',
+                    '--no-pings',
+                    '--password-store=basic',
+                    '--use-mock-keychain',
+                    '--disable-blink-features=AutomationControlled',
+                    # REMOVED: '--single-process' (causes crashes)
+                    # REMOVED: '--disable-web-security' (can cause issues)
                 ]
             )
             
             logger.info("\n📂 Opening tabs in batches...")
             
-            # Open in batches
-            batch_size = 3
+            # Open in smaller batches with delays
+            batch_size = 2  # Smaller batches for Railway
             for batch_start in range(0, self.num_tabs, batch_size):
                 batch_end = min(batch_start + batch_size, self.num_tabs)
+                
+                logger.info(f"\n📦 Batch {(batch_start // batch_size) + 1}: Tabs {batch_start + 1}-{batch_end}")
                 
                 tasks = [
                     self.open_tab(
@@ -196,11 +218,19 @@ class RumbleBot:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 
                 for page in results:
-                    if page:
+                    if page and not isinstance(page, Exception):
                         self.pages.append(page)
                 
-                logger.info(f"✅ Opened {len(self.pages)}/{self.num_tabs} tabs")
-                await asyncio.sleep(2)
+                logger.info(f"✅ Progress: {len(self.pages)}/{self.num_tabs} tabs active")
+                
+                # Longer delay between batches
+                if batch_end < self.num_tabs:
+                    await asyncio.sleep(3)
+            
+            if len(self.pages) == 0:
+                logger.error("❌ FAILED: No tabs could be opened!")
+                logger.error("This might be a Railway resource issue or Rumble blocking")
+                return
             
             self.print_stats()
             
@@ -211,12 +241,12 @@ class RumbleBot:
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
             finally:
+                logger.info("Closing browser...")
                 await self.browser.close()
 
 
 # Main execution
 if __name__ == "__main__":
-    # Get config from environment variables (Railway will set these)
     from config import VIDEO_URLS, RELOAD_INTERVAL, NUM_TABS
     
     bot = RumbleBot(
