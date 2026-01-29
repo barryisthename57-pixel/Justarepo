@@ -1,4 +1,4 @@
-# bot.py - COMPLETE AND FIXED
+# bot_parallel.py - ALL TABS LOAD AT ONCE!
 import asyncio
 from playwright.async_api import async_playwright
 import random
@@ -7,164 +7,88 @@ import logging
 from datetime import datetime
 import os
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+MOBILE_USER_AGENTS = [
+    'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
 ]
 
-VIEWPORTS = [
-    {'width': 1920, 'height': 1080},
-    {'width': 1440, 'height': 900},
-    {'width': 1366, 'height': 768},
+MOBILE_VIEWPORTS = [
+    {'width': 412, 'height': 915},
+    {'width': 360, 'height': 800},
 ]
 
 AUTOPLAY_SCRIPT = """
-(async function() {
-    console.log('[RUMBLE-MONETIZED] Starting autoplay script...');
+(function() {
+    console.log('[PARALLEL-BOT] Starting autoplay...');
     
-    let playAttempts = 0;
-    const maxAttempts = 60;
+    let attempts = 0;
+    const maxAttempts = 40;
     
     function tryPlay() {
-        playAttempts++;
-        console.log('[RUMBLE-MONETIZED] Attempt #' + playAttempts);
-        
+        attempts++;
         const videos = document.querySelectorAll('video');
-        console.log('[RUMBLE-MONETIZED] Found ' + videos.length + ' video(s)');
         
-        videos.forEach((v, index) => {
+        videos.forEach((v, i) => {
             try {
-                if (v.readyState < 3) {
-                    console.log('[RUMBLE-MONETIZED] Video ' + index + ' not ready, loading...');
-                    v.load();
-                }
+                if (v.readyState < 3) v.load();
                 
                 v.muted = true;
-                v.volume = 0;
                 v.autoplay = true;
                 v.playsInline = true;
-                v.removeAttribute('data-click-to-play');
                 
-                const playPromise = v.play();
-                if (playPromise) {
-                    playPromise.then(() => {
-                        console.log('[RUMBLE-MONETIZED] ✅ Video ' + index + ' PLAYING at ' + v.currentTime.toFixed(2) + 's');
-                    }).catch(err => {
-                        console.log('[RUMBLE-MONETIZED] ❌ Play failed: ' + err.name);
-                        setTimeout(() => {
-                            v.muted = true;
-                            v.play().catch(() => {});
-                        }, 500);
-                    });
-                }
-                
-                v.dispatchEvent(new Event('play'));
-                
-            } catch(e) {
-                console.log('[RUMBLE-MONETIZED] Error on video ' + index + ': ' + e.message);
-            }
-        });
-        
-        const playSelectors = [
-            'button[aria-label*="play" i]',
-            'button[title*="play" i]',
-            '.media-play-button',
-            '.play-button',
-            '[class*="PlayButton"]',
-            '[class*="play-button"]',
-            '[data-action="play"]',
-            'button[type="button"]',
-            '.vjs-big-play-button',
-            'div[role="button"]'
-        ];
-        
-        playSelectors.forEach(selector => {
-            try {
-                const buttons = document.querySelectorAll(selector);
-                buttons.forEach(btn => {
-                    if (btn && btn.offsetParent !== null) {
-                        btn.click();
-                        console.log('[RUMBLE-MONETIZED] Clicked: ' + selector);
-                    }
+                v.play().then(() => {
+                    console.log('[PARALLEL-BOT] ✅ Video ' + i + ' playing');
+                }).catch(() => {
+                    setTimeout(() => {
+                        v.muted = true;
+                        v.play();
+                    }, 500);
                 });
             } catch(e) {}
         });
         
-        videos.forEach((v, i) => {
+        const selectors = ['button[aria-label*="play" i]', '.vjs-big-play-button', '.play-button'];
+        selectors.forEach(sel => {
             try {
-                v.click();
-                console.log('[RUMBLE-MONETIZED] Clicked video ' + i);
+                document.querySelectorAll(sel).forEach(btn => {
+                    if (btn) btn.click();
+                });
             } catch(e) {}
         });
-        
-        if (videos.length > 0) {
-            try {
-                videos[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } catch(e) {}
-        }
     }
     
     try {
-        Object.defineProperty(document, 'hidden', {
-            configurable: true,
-            get: () => false
-        });
-        Object.defineProperty(document, 'visibilityState', {
-            configurable: true,
-            get: () => 'visible'
-        });
-        console.log('[RUMBLE-MONETIZED] Visibility overridden');
+        Object.defineProperty(document, 'hidden', { get: () => false });
+        Object.defineProperty(document, 'visibilityState', { get: () => 'visible' });
     } catch(e) {}
-    
-    window.addEventListener('blur', (e) => e.stopImmediatePropagation(), true);
-    window.addEventListener('focus', (e) => e.stopImmediatePropagation(), true);
     
     tryPlay();
     
-    let interval = setInterval(() => {
-        if (playAttempts >= maxAttempts) {
+    const interval = setInterval(() => {
+        if (attempts >= maxAttempts) {
             clearInterval(interval);
-            console.log('[RUMBLE-MONETIZED] Max attempts reached');
             return;
         }
         
         const videos = document.querySelectorAll('video');
         let anyPlaying = false;
-        
         videos.forEach(v => {
-            if (!v.paused && v.currentTime > 0) {
-                anyPlaying = true;
-            }
+            if (!v.paused && v.currentTime > 0) anyPlaying = true;
         });
         
-        if (anyPlaying) {
-            console.log('[RUMBLE-MONETIZED] ✅✅✅ Video confirmed playing, stopping attempts');
-            clearInterval(interval);
-        } else {
-            tryPlay();
-        }
+        if (!anyPlaying) tryPlay();
     }, 500);
     
     const observer = new MutationObserver(() => tryPlay());
     observer.observe(document.body, { childList: true, subtree: true });
-    
-    ['DOMContentLoaded', 'load', 'canplay', 'loadedmetadata'].forEach(event => {
-        window.addEventListener(event, tryPlay);
-    });
-    
-    console.log('[RUMBLE-MONETIZED] ✅ Script fully activated');
 })();
 """
 
-class RumbleBot:
-    def __init__(self, video_urls, reload_interval=120, num_tabs=10):
+class ParallelBot:
+    def __init__(self, video_urls, reload_interval=60, num_tabs=11):
         self.video_urls = video_urls
         self.reload_interval = reload_interval
         self.num_tabs = num_tabs
@@ -180,150 +104,127 @@ class RumbleBot:
             'start_time': datetime.now()
         }
     
-    def check_resources(self):
-        memory = psutil.virtual_memory()
-        cpu_count = psutil.cpu_count()
-        ram_available_gb = memory.available / (1024 ** 3)
-        ram_total_gb = memory.total / (1024 ** 3)
-        
-        logger.info("=" * 70)
-        logger.info("🖥️  SYSTEM RESOURCES")
-        logger.info("=" * 70)
-        logger.info(f"💾 Total RAM: {ram_total_gb:.2f} GB")
-        logger.info(f"💾 Available RAM: {ram_available_gb:.2f} GB")
-        logger.info(f"🔧 CPU Cores: {cpu_count}")
-        logger.info(f"📊 Target Tabs: {self.num_tabs}")
-        logger.info("=" * 70)
-    
-    async def inject_autoplay(self, page):
-        try:
-            await page.evaluate(AUTOPLAY_SCRIPT)
-            return True
-        except Exception as e:
-            logger.error(f"Injection failed: {str(e)[:80]}")
-            return False
-    
-    async def wait_for_playback(self, page, tab_index, max_wait=15):
-        logger.info(f"⏳ Tab {tab_index + 1}: Waiting for playback (max {max_wait}s)...")
-        
-        for i in range(max_wait):
-            try:
-                is_playing = await page.evaluate("""
-                    () => {
-                        const videos = document.querySelectorAll('video');
-                        for (let v of videos) {
-                            if (!v.paused && v.currentTime > 0 && v.readyState >= 3) {
-                                return {
-                                    playing: true,
-                                    time: v.currentTime,
-                                    ready: v.readyState,
-                                    duration: v.duration
-                                };
-                            }
-                        }
-                        return { playing: false };
-                    }
-                """)
-                
-                if is_playing['playing']:
-                    logger.info(f"✅ Tab {tab_index + 1}: Confirmed playing after {i+1}s!")
-                    logger.info(f"   Time: {is_playing['time']:.1f}s / {is_playing['duration']:.1f}s")
-                    return True
-                
-            except:
-                pass
-            
-            await asyncio.sleep(1)
-        
-        logger.warning(f"⚠️  Tab {tab_index + 1}: Playback not confirmed after {max_wait}s")
-        return False
-    
-    async def open_tab(self, url, tab_index):
+    async def open_tab_fast(self, url, tab_index):
+        """Open tab WITHOUT waiting for playback confirmation"""
         try:
             context = await self.browser.new_context(
-                viewport=random.choice(VIEWPORTS),
-                user_agent=random.choice(USER_AGENTS),
+                viewport=random.choice(MOBILE_VIEWPORTS),
+                user_agent=random.choice(MOBILE_USER_AGENTS),
                 locale='en-US',
                 timezone_id='America/New_York',
+                is_mobile=True,
+                has_touch=True,
             )
             
             page = await context.new_page()
             
-            page.on("console", lambda msg: 
-                logger.debug(f"[Tab {tab_index + 1}] {msg.text}") if 'RUMBLE-MONETIZED' in msg.text else None
-            )
+            # Load page (don't wait for networkidle, just domcontentloaded)
+            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
             
-            logger.info(f"🌐 Tab {tab_index + 1}: Loading {url[:70]}...")
-            
-            await page.goto(url, wait_until='networkidle', timeout=90000)
-            await asyncio.sleep(4)
-            
-            logger.info(f"💉 Tab {tab_index + 1}: Injecting autoplay...")
-            await self.inject_autoplay(page)
-            
-            is_confirmed = await self.wait_for_playback(page, tab_index, max_wait=15)
-            
-            if is_confirmed:
-                logger.info(f"✅✅✅ Tab {tab_index + 1}: MONETIZED VIDEO PLAYING!")
-                self.stats['confirmed_playing'] += 1
-            else:
-                logger.warning(f"⚠️  Tab {tab_index + 1}: Could not confirm playback")
-                logger.info(f"   (Counting as view anyway - script may still work)")
+            logger.info(f"✅ Tab {tab_index + 1}: Loaded")
             
             self.stats['total_views'] += 1
             return context, page
             
         except Exception as e:
-            logger.error(f"❌ Tab {tab_index + 1}: {str(e)[:120]}")
+            logger.error(f"❌ Tab {tab_index + 1}: {str(e)[:80]}")
             self.stats['errors'] += 1
             return None, None
     
-    async def close_tab(self, context, page, tab_index):
+    async def inject_autoplay_all(self):
+        """Inject autoplay into ALL tabs at once"""
+        logger.info(f"💉 Injecting autoplay into all {len(self.pages)} tabs...")
+        
+        tasks = []
+        for i, page in enumerate(self.pages):
+            if page:
+                tasks.append(self.inject_to_page(page, i))
+        
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info(f"✅ Autoplay injected into all tabs!")
+    
+    async def inject_to_page(self, page, tab_index):
+        """Inject autoplay script to one page"""
+        try:
+            await page.evaluate(AUTOPLAY_SCRIPT)
+            logger.info(f"   💉 Tab {tab_index + 1}: Script injected")
+        except Exception as e:
+            logger.error(f"   ❌ Tab {tab_index + 1}: Injection failed")
+    
+    async def verify_playback_all(self):
+        """Check playback on all tabs at once"""
+        logger.info(f"🔍 Verifying playback on all tabs...")
+        
+        tasks = []
+        for i, page in enumerate(self.pages):
+            if page:
+                tasks.append(self.check_playback(page, i))
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        playing_count = sum(1 for r in results if r is True)
+        self.stats['confirmed_playing'] += playing_count
+        
+        logger.info(f"✅ {playing_count}/{len(self.pages)} tabs confirmed playing")
+    
+    async def check_playback(self, page, tab_index):
+        """Check if video is playing on one page"""
+        try:
+            is_playing = await page.evaluate("""
+                () => {
+                    const v = document.querySelector('video');
+                    return v && !v.paused && v.currentTime > 0;
+                }
+            """)
+            
+            if is_playing:
+                logger.info(f"   ✅ Tab {tab_index + 1}: PLAYING")
+                return True
+            else:
+                logger.info(f"   ⚠️  Tab {tab_index + 1}: Not playing")
+                return False
+        except:
+            return False
+    
+    async def close_all_tabs(self):
+        """Close all tabs at once"""
+        logger.info(f"🗑️  Closing all {len(self.pages)} tabs...")
+        
+        tasks = []
+        for context, page in zip(self.contexts, self.pages):
+            tasks.append(self.close_tab(context, page))
+        
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+        self.contexts = []
+        self.pages = []
+        
+        logger.info(f"✅ All tabs closed")
+    
+    async def close_tab(self, context, page):
+        """Close one tab"""
         try:
             if page:
                 await page.close()
             if context:
                 await context.close()
-            logger.info(f"🗑️  Tab {tab_index + 1}: Closed")
         except:
             pass
     
-    async def cycle_tab(self, old_context, old_page, tab_index):
-        try:
-            await asyncio.sleep(random.uniform(0.5, 2))
-            logger.info(f"🔄 Tab {tab_index + 1}: Cycling...")
-            
-            await self.close_tab(old_context, old_page, tab_index)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            
-            url = random.choice(self.video_urls)
-            return await self.open_tab(url, tab_index)
-            
-        except Exception as e:
-            logger.error(f"❌ Cycle error: {str(e)[:120]}")
-            self.stats['errors'] += 1
-            return None, None
-    
     def print_stats(self):
         runtime = (datetime.now() - self.stats['start_time']).total_seconds() / 60
-        memory = psutil.virtual_memory()
         
         if runtime > 0:
-            views_per_hour = (self.stats['total_views'] / runtime) * 60
+            views_per_min = self.stats['total_views'] / runtime
+            views_per_hour = views_per_min * 60
             views_per_day = views_per_hour * 24
         else:
             views_per_hour = views_per_day = 0
         
-        try:
-            process = psutil.Process(os.getpid())
-            process_ram_gb = process.memory_info().rss / (1024 ** 3)
-        except:
-            process_ram_gb = 0
-        
         success_rate = (self.stats['confirmed_playing'] / max(self.stats['total_views'], 1)) * 100
         
         logger.info("=" * 70)
-        logger.info("📊 STATISTICS")
+        logger.info("📊 PARALLEL BOT STATISTICS")
         logger.info("=" * 70)
         logger.info(f"⏱️  Runtime: {runtime:.1f} min ({runtime/60:.1f} hrs)")
         logger.info(f"📺 Active Tabs: {len(self.pages)}/{self.num_tabs}")
@@ -331,59 +232,88 @@ class RumbleBot:
         logger.info(f"✅ Confirmed Playing: {self.stats['confirmed_playing']} ({success_rate:.0f}%)")
         logger.info(f"🔄 Cycles: {self.stats['total_cycles']}")
         logger.info(f"❌ Errors: {self.stats['errors']}")
-        logger.info(f"💾 Bot RAM: {process_ram_gb:.2f} GB")
-        logger.info(f"💾 System RAM: {memory.percent}%")
         logger.info(f"")
-        logger.info(f"💰 MONETIZATION PROJECTION:")
+        logger.info(f"💰 PROJECTIONS:")
+        logger.info(f"   Views/hour: {views_per_hour:,.0f}")
         logger.info(f"   Views/day: {views_per_day:,.0f}")
-        logger.info(f"   Confirmed/day: {(self.stats['confirmed_playing']/max(runtime,0.1))*60*24:,.0f}")
+        logger.info(f"   Views/month: {views_per_day * 30:,.0f}")
+        logger.info(f"   Est. earnings/day (at $1 CPM): ${views_per_day/1000:.2f}")
         logger.info("=" * 70)
     
-    async def cycle_all_tabs(self):
+    async def open_all_tabs_parallel(self):
+        """Open ALL tabs at the same time"""
+        logger.info(f"📂 Opening {self.num_tabs} tabs in PARALLEL...")
+        
+        start_time = asyncio.get_event_loop().time()
+        
+        # Create all tab opening tasks
+        tasks = [
+            self.open_tab_fast(random.choice(self.video_urls), i)
+            for i in range(self.num_tabs)
+        ]
+        
+        # Run ALL tasks at once!
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Collect successful tabs
+        for context, page in results:
+            if context and page and not isinstance(context, Exception):
+                self.contexts.append(context)
+                self.pages.append(page)
+        
+        elapsed = asyncio.get_event_loop().time() - start_time
+        
+        logger.info(f"✅ Opened {len(self.pages)}/{self.num_tabs} tabs in {elapsed:.1f}s")
+        
+        return len(self.pages)
+    
+    async def cycle_all_tabs_parallel(self):
+        """Close all tabs and reopen in parallel"""
         logger.info(f"\n{'='*70}")
         logger.info(f"🔄 CYCLE {self.stats['total_cycles'] + 1}")
         logger.info(f"{'='*70}\n")
         
-        new_contexts = []
-        new_pages = []
+        # Close all tabs at once
+        await self.close_all_tabs()
         
-        for i in range(len(self.pages)):
-            old_ctx = self.contexts[i] if i < len(self.contexts) else None
-            old_pg = self.pages[i] if i < len(self.pages) else None
-            
-            new_ctx, new_pg = await self.cycle_tab(old_ctx, old_pg, i)
-            
-            if new_ctx and new_pg:
-                new_contexts.append(new_ctx)
-                new_pages.append(new_pg)
-            
-            await asyncio.sleep(random.uniform(1, 2))
+        # Small delay
+        await asyncio.sleep(1)
         
-        self.contexts = new_contexts
-        self.pages = new_pages
+        # Reopen all tabs at once
+        await self.open_all_tabs_parallel()
+        
+        # Wait for pages to settle
+        await asyncio.sleep(3)
+        
+        # Inject autoplay into all tabs at once
+        await self.inject_autoplay_all()
+        
+        # Wait for autoplay to work
+        await asyncio.sleep(5)
+        
+        # Verify playback on all tabs at once
+        await self.verify_playback_all()
+        
         self.stats['total_cycles'] += 1
         
-        logger.info(f"\n✅ Cycle complete: {len(self.pages)} active\n")
         self.print_stats()
     
     async def cycle_loop(self):
+        """Main loop - cycle all tabs in parallel"""
         while True:
             interval = random.uniform(self.reload_interval * 0.9, self.reload_interval * 1.1)
-            logger.info(f"\n⏰ Next cycle: {interval:.0f}s ({interval/60:.1f} min)")
+            logger.info(f"\n⏰ Next cycle in {interval:.0f}s ({interval/60:.1f} min)")
             await asyncio.sleep(interval)
             
-            if len(self.pages) > 0:
-                await self.cycle_all_tabs()
-            else:
-                logger.warning("No active tabs to cycle!")
+            await self.cycle_all_tabs_parallel()
     
     async def run(self):
-        self.check_resources()
-        
         logger.info("\n" + "=" * 70)
-        logger.info("💰 RUMBLE MONETIZED BOT STARTING")
+        logger.info("🚀 PARALLEL LOADING BOT")
         logger.info("=" * 70)
-        logger.info("Strategy: Direct monetized URLs for revenue")
+        logger.info(f"Strategy: All tabs load at once, then inject autoplay")
+        logger.info(f"Tabs: {self.num_tabs}")
+        logger.info(f"Reload: {self.reload_interval}s ({self.reload_interval/60:.1f} min)")
         logger.info("=" * 70 + "\n")
         
         async with async_playwright() as p:
@@ -397,48 +327,38 @@ class RumbleBot:
                     '--autoplay-policy=no-user-gesture-required',
                     '--mute-audio',
                     '--disable-blink-features=AutomationControlled',
-                    '--disable-features=IsolateOrigins,site-per-process',
                 ]
             )
             
-            logger.info("📂 Opening monetized video tabs...\n")
+            # INITIAL SETUP - ALL AT ONCE
+            logger.info("🚀 INITIAL SETUP (PARALLEL)\n")
             
-            batch_size = 2
-            for batch_start in range(0, self.num_tabs, batch_size):
-                batch_end = min(batch_start + batch_size, self.num_tabs)
-                
-                tasks = [
-                    self.open_tab(random.choice(self.video_urls), i)
-                    for i in range(batch_start, batch_end)
-                ]
-                
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                for ctx, pg in results:
-                    if ctx and pg and not isinstance(ctx, Exception):
-                        self.contexts.append(ctx)
-                        self.pages.append(pg)
-                
-                logger.info(f"Progress: {len(self.pages)}/{self.num_tabs}\n")
-                await asyncio.sleep(3)
+            await self.open_all_tabs_parallel()
             
-            logger.info(f"\n✅ Setup complete: {len(self.pages)} tabs\n")
+            await asyncio.sleep(3)
+            
+            await self.inject_autoplay_all()
+            
+            await asyncio.sleep(5)
+            
+            await self.verify_playback_all()
+            
+            logger.info(f"\n✅ SETUP COMPLETE: {len(self.pages)} tabs active\n")
             self.print_stats()
             
-            logger.info("\n🔁 Starting cycle loop...\n")
+            logger.info("\n🔁 Starting parallel cycle loop...\n")
             
             try:
                 await self.cycle_loop()
             except KeyboardInterrupt:
                 logger.info("\n🛑 Stopping...")
             finally:
-                for i, (ctx, pg) in enumerate(zip(self.contexts, self.pages)):
-                    await self.close_tab(ctx, pg, i)
+                await self.close_all_tabs()
                 await self.browser.close()
 
 
 if __name__ == "__main__":
     from config import VIDEO_URLS, RELOAD_INTERVAL, NUM_TABS
     
-    bot = RumbleBot(VIDEO_URLS, RELOAD_INTERVAL, NUM_TABS)
+    bot = ParallelBot(VIDEO_URLS, RELOAD_INTERVAL, NUM_TABS)
     asyncio.run(bot.run())
