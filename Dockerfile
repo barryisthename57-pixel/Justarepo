@@ -1,11 +1,17 @@
 FROM python:3.11-slim
 
-# Install system dependencies
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     ca-certificates \
     fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-unifont \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -30,17 +36,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy requirements and install
+# Copy requirements and install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
+# Install Playwright and Chromium browser
 RUN playwright install chromium
 RUN playwright install-deps chromium
 
 # Copy application code
 COPY . .
 
-# Railway will set PORT, but we don't need it for this bot
-# Just run the bot
+# Run the bot
 CMD ["python", "bot.py"]
